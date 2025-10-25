@@ -1,0 +1,1 @@
+{"options":{"timeseries":{"timeField":"ts","granularity":"seconds","bucketMaxSpanSeconds":{"$numberInt":"3600"}}},"indexes":[],"collectionName":"temperature","type":"timeseries"}

@@ -11,7 +11,7 @@ from pymongo import MongoClient
 load_dotenv()
 
 #Postgres schema helper
-PG_SCHEMA = os.getenv("PG_SCHEMA", "public")   # CHANGE: "public" to your own schema name
+PG_SCHEMA = os.getenv("PG_SCHEMA", "smart_home")   # CHANGE: "public" to your own schema name
 def qualify(sql: str) -> str:
     # Replace occurrences of {S}.<table> with <schema>.<table>
     return sql.replace("{S}.", f"{PG_SCHEMA}.")
@@ -25,259 +25,77 @@ CONFIG = {
             #CHANGE: Replace all the following Postgres queries with your own queries, for each user you identified for your project's Information System
             # Each query must have a unique name, an SQL string, a chart specification, tags (for user roles), and optional params (parameters)
             # :doctor_id, :nurse_id, :patient_name, etc., are placeholders. Their values will come from the dashboard sidebar.
-            #User 1: DOCTORS 
-            "Doctor: patients under my care (table)": {
+            #User 1: Administrator
+            "Admin: list all users (table)": {
                 "sql": """
-                    SELECT p.patient_id, p.name AS patient, p.age, p.room_no
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id 
-                    ORDER BY p.name;
+                    SELECT user_id,     name, email, phone_number, role
+                    FROM {S}.users
+                    WHERE role = 'Admin';
                 """,
                 "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
+                "tags": ["admin"],
+                "params": ["user_id"]
             },
-            "Doctor: most recent treatment per my patient (table)": {
+            "Admin: devices per room (bar)": {  
                 "sql": """
-                    SELECT p.name AS patient,
-                           (SELECT MAX(t.treatment_time)
-                              FROM {S}.treatments t
-                              WHERE t.patient_id = p.patient_id) AS last_treatment
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                    ORDER BY last_treatment DESC NULLS LAST;
+                    SELECT r.room_name, COUNT(*) AS device_count
+                    FROM {S}.devices d
+                    JOIN {S}.rooms r ON d.room_id = r.room_id
+                    GROUP BY r.name
+                    ORDER BY device_count DESC;
                 """,
-                "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
-            },
-            "Doctor: high-risk (age > threshold) under my care (bar)": {
-                "sql": """
-                    SELECT p.name AS patient, p.age
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                      AND p.age > :age_threshold
-                    ORDER BY p.age DESC;
-                """,
-                "chart": {"type": "bar", "x": "patient", "y": "age"},
-                "tags": ["doctor"],
-                "params": ["doctor_id", "age_threshold"]
-            },
-            "Doctor: patients with NO treatment today (table)": {
-                "sql": """
-                    SELECT p.name, p.room_no
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                      AND NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.patient_id = p.patient_id
-                          AND t.treatment_time::date = CURRENT_DATE
-                      );
-                """,
-                "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
-            },
-            "Doctor: treatments by type for my patients (bar)": {
-                "sql": """
-                    SELECT t.treatment_type, COUNT(*)::int AS times_given
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON p.patient_id = t.patient_id
-                    WHERE p.doctor_id = :doctor_id
-                    GROUP BY t.treatment_type
-                    ORDER BY times_given DESC;
-                """,
-                "chart": {"type": "bar", "x": "treatment_type", "y": "times_given"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
+                "chart": {"type": "bar", "x": "room_name", "y": "device_count"},
+                "tags": ["admin"],
+                "params": ["device_id"]
             },
 
-            #User 2: NURSES 
-            "Nurse: today’s tasks (treatments to administer) (table)": {
+            #User 2: Family member 
+            "Family: my devices (table)": {
                 "sql": """
-                    SELECT p.name AS patient, t.treatment_type, t.treatment_time
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    WHERE t.nurse_id = :nurse_id
-                      AND t.treatment_time::date = CURRENT_DATE
-                    ORDER BY t.treatment_time;
+                    SELECT d.device_id, d.name, d.device_type, d.firmware_version
+                    FROM {S}.devices d
+                    JOIN {S}.rules r ON r.device_id = d.device_id
+                    JOIN {S}.users u ON u.user_id = r.user_id
+                    WHERE u.name = 'Zhang San'
+                    ORDER BY d.name;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["nurse"],
-                "params": ["nurse_id"]
+                "tags": ["user"],
+                "params": ["device_id"]
             },
-            "Nurse: patients with NO treatment yet today (table)": {
+      
+            #User 3: Guest 
+            "Guest: public-area devices": {
                 "sql": """
-                    SELECT p.name, p.room_no
-                    FROM {S}.patients p
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.patient_id = p.patient_id
-                          AND t.treatment_time::date = CURRENT_DATE
-                    )
-                    ORDER BY p.room_no, p.name;
+                    SELECT d.device_id, d.name AS device_name, d.device_type, r.name AS room_name
+                    FROM {S}.devices d
+                    JOIN {S}.rooms r ON d.room_id = r.room_id
+                    WHERE r.name IN ('Living Room','Kitchen')
+                    ORDER BY r.name, d.name;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["nurse"]
+                "tags": ["room"],
+                "params": ["device_id"]
             },
-            "Nurse: medicines running low (bar)": {
+            "Guest: device owner lookup": {
                 "sql": """
-                    SELECT m.name, m.quantity
-                    FROM {S}.medicine_stock m
-                    WHERE m.quantity < :med_low_threshold
-                    ORDER BY m.quantity ASC;
-                """,
-                "chart": {"type": "bar", "x": "name", "y": "quantity"},
-                "tags": ["nurse"],
-                "params": ["med_low_threshold"]
-            },
-
-            #User 3: PHARMACISTS 
-            "Pharmacist: medicines to reorder (bar)": {
-                "sql": """
-                    SELECT m.name, m.quantity
-                    FROM {S}.medicine_stock m
-                    WHERE m.quantity < :reorder_threshold
-                    ORDER BY m.quantity ASC;
-                """,
-                "chart": {"type": "bar", "x": "name", "y": "quantity"},
-                "tags": ["pharmacist"],
-                "params": ["reorder_threshold"]
-            },
-            "Pharmacist: top 5 medicines this month (bar)": {
-                "sql": """
-                    SELECT t.treatment_type AS medicine, COUNT(*)::int AS times_given
-                    FROM {S}.treatments t
-                    WHERE t.treatment_time >= date_trunc('month', CURRENT_DATE)
-                    GROUP BY t.treatment_type
-                    ORDER BY times_given DESC
-                    LIMIT 5;
-                """,
-                "chart": {"type": "bar", "x": "medicine", "y": "times_given"},
-                "tags": ["pharmacist"]
-            },
-            "Pharmacist: which nurse gave most medicines today (table)": {
-                "sql": """
-                    SELECT n.name, COUNT(t.treatment_id)::int AS total
-                    FROM {S}.nurses n
-                    JOIN {S}.treatments t ON t.nurse_id = n.nurse_id
-                    WHERE t.treatment_time::date = CURRENT_DATE
-                    GROUP BY n.name
-                    ORDER BY total DESC
-                    LIMIT 1;
+                    SELECT DISTINCT
+                            d.device_id,
+                            d.name        AS device_name,
+                            d.device_type,
+                            rm.name       AS room_name,
+                            u.name        AS owner_name
+                    FROM {S}.devices d
+                    JOIN {S}.rules  r  ON r.device_id = d.device_id
+                    JOIN {S}.rooms  rm ON rm.room_id  = d.room_id
+                    JOIN {S}.users  u  ON u.user_id   = r.user_id
+                    WHERE rm.name IN ('Living Room','Kitchen')
+                    ORDER BY rm.name, d.name;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["pharmacist"]
-            },
-            "Pharmacist: medicines unused in last N days (table)": {
-                "sql": """
-                    SELECT m.name
-                    FROM {S}.medicine_stock m
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.treatment_type = m.name
-                          AND t.treatment_time >= NOW() - (:days || ' days')::interval
-                    )
-                    ORDER BY m.name;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["pharmacist"],
-                "params": ["days"]
-            },
-
-            # User 4: FAMILY/GUARDIANS 
-            "Family: last treatment for my relative (table)": {
-                "sql": """
-                    SELECT t.treatment_type, t.treatment_time, n.name AS nurse
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    LEFT JOIN {S}.nurses n ON t.nurse_id = n.nurse_id
-                    WHERE p.name = :patient_name
-                    ORDER BY t.treatment_time DESC
-                    LIMIT 1;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
-            },
-            "Family: which doctor is assigned to my relative? (table)": {
-                "sql": """
-                    SELECT p.name AS patient, d.name AS doctor, d.specialization
-                    FROM {S}.patients p
-                    JOIN {S}.doctors d ON p.doctor_id = d.doctor_id
-                    WHERE p.name = :patient_name;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
-            },
-            "Family: total treatments this month for my relative (table)": {
-                "sql": """
-                    SELECT COUNT(*)::int AS treatments_this_month
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    WHERE p.name = :patient_name
-                      AND t.treatment_time >= date_trunc('month', CURRENT_DATE);
-                """,
-                "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
-            },
-
-            # User 5: MANAGERS 
-            "Mgr: total patients & average age (table)": {
-                "sql": """
-                    SELECT COUNT(*)::int AS total_patients, AVG(age)::numeric(10,1) AS avg_age
-                    FROM {S}.patients;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["manager"]
-            },
-            "Mgr: patients per doctor (bar)": {
-                "sql": """
-                    SELECT d.name AS doctor, COUNT(*)::int AS num_patients
-                    FROM {S}.doctors d
-                    LEFT JOIN {S}.patients p ON d.doctor_id = p.doctor_id
-                    GROUP BY d.name
-                    ORDER BY num_patients DESC;
-                """,
-                "chart": {"type": "bar", "x": "doctor", "y": "num_patients"},
-                "tags": ["manager"]
-            },
-            "Mgr: treatments in last N days (table)": {
-                "sql": """
-                    SELECT COUNT(*)::int AS total_treatments
-                    FROM {S}.treatments
-                    WHERE treatment_time >= NOW() - (:days || ' days')::interval;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["manager"],
-                "params": ["days"]
-            },
-            "Mgr: rooms currently occupied (table)": {
-                "sql": """
-                    SELECT DISTINCT p.room_no
-                    FROM {S}.patients p
-                    ORDER BY p.room_no;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["manager"]
-            },
-            "Mgr: doctor with oldest patients (table)": {
-                "sql": """
-                    SELECT d.name, MAX(p.age) AS oldest_patient_age
-                    FROM {S}.doctors d
-                    JOIN {S}.patients p ON d.doctor_id = p.doctor_id
-                    GROUP BY d.name
-                    ORDER BY oldest_patient_age DESC
-                    LIMIT 1;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["manager"]
-            }
+                "tags": ["room", "user"],
+                "params": ["device_id"]
+            }            
         }
     },
 
@@ -288,87 +106,74 @@ CONFIG = {
         
         # CHANGE: Just like above, replace all the following Mongo queries with your own, for the different users you identified
         "queries": {
-            "TS: Hourly avg heart rate (resident 501, last 24h)": {
-                "collection": "bracelet_readings_ts",
+            "TS: avg temperature per room (24h)": {
+                "collection": "temperature",
                 "aggregate": [
-                    {"$match": {
-                        "meta.resident_id": 501,
-                        "ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}
-                    }},
-                    {"$project": {
-                        "hour": {"$dateTrunc": {"date": "$ts", "unit": "hour"}},
-                        "hr": "$heart_rate_bpm"
-                    }},
-                    {"$group": {"_id": "$hour", "avg_hr": {"$avg": "$hr"}, "n": {"$count": {}}}},
+                    {"$match": {"ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}}},
+                    {"$group": {"_id": "$room", "avg_temp": {"$avg": "$temperature_c"}}},
                     {"$sort": {"_id": 1}}
                 ],
-                "chart": {"type": "line", "x": "_id", "y": "avg_hr"}
+                "chart": {"type": "line", "x": "_id", "y": "avg_temp"}
             },
-
-            "TS: Exceedance counts (SpO2 < 92, last 7 days) by resident": {
-                "collection": "bracelet_readings_ts",
+            "TS: brightness trend last 24h (family room)": {
+                "collection": "brightness",
                 "aggregate": [
-                    {"$match": {
-                        "ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)},
-                        "spo2_pct": {"$lt": 92}
-                    }},
-                    {"$group": {"_id": "$meta.resident_id", "hits": {"$count": {}}}},
-                    {"$sort": {"hits": -1}}
+                    {"$match": {"room": "Bedroom",
+                                "ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}}},
+                    {"$project": {"hour": {"$hour": "$ts"}, "lux": "$brightness_lux"}},
+                    {"$group": {"_id": "$hour", "avgLux": {"$avg": "$lux"}}},
+                    {"$sort": {"_id": 1}}
                 ],
-                "chart": {"type": "bar", "x": "_id", "y": "hits"}
+                "chart": {"type": "line", "x": "_id", "y": "avgLux"}
             },
-
-            "Telemetry: Latest reading per device": {
-                "collection": "bracelet_data",
+           
+            "Telemetry: motion events per room (30d)": {
+                "collection": "motion_events",
                 "aggregate": [
-                    {"$sort": {"ts": -1, "_id": -1}},
+                    {"$match": {"ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=30)}}},
+                    {"$group": {"_id": "$room", "events": {"$count": {}}}},
+                    {"$sort": {"events": -1}}
+                ],
+                "chart": {"type": "bar", "x": "_id", "y": "events"}
+            },
+            "Telemetry: latest device status": {
+                "collection": "device_status",
+                "aggregate": [
+                    {"$sort": {"ts": -1}},
                     {"$group": {"_id": "$device_id", "doc": {"$first": "$$ROOT"}}},
                     {"$replaceRoot": {"newRoot": "$doc"}},
-                    {"$project": {
-                        "_id": 0, "device_id": 1, "resident_id": 1, "ts": 1,
-                        "hr": "$metrics.heart_rate_bpm", "spo2": "$metrics.spo2_pct",
-                        "status": 1
-                    }}
+                    {"$project": {"_id": 0, "device_id": 1, "status": 1, "battery_percent": 1, "ts": 1}}
                 ],
                 "chart": {"type": "table"}
             },
-
-            "Telemetry: Battery status distribution": {
-                "collection": "bracelet_data",
+            "Telemetry: low-battery wireless sensors": {
+                "collection": "device_status",
                 "aggregate": [
-                    {"$project": {
-                        "battery": {"$ifNull": ["$battery_pct", None]},
-                        "bucket": {
-                            "$switch": {
-                                "branches": [
-                                    {"case": {"$gte": ["$battery_pct", 80]}, "then": "80–100"},
-                                    {"case": {"$gte": ["$battery_pct", 60]}, "then": "60–79"},
-                                    {"case": {"$gte": ["$battery_pct", 40]}, "then": "40–59"},
-                                    {"case": {"$gte": ["$battery_pct", 20]}, "then": "20–39"},
-                                ],
-                                "default": "<20 or null"
-                            }
-                        }
-                    }},
-                    {"$group": {"_id": "$bucket", "cnt": {"$count": {}}}},
-                    {"$sort": {"cnt": -1}}
+                    {"$match": {"battery_percent": {"$lt": 20}, "connectivity": "wireless"}},
+                    {"$project": {"_id": 0, "device_id": 1, "battery_percent": 1}}
                 ],
-                "chart": {"type": "pie", "names": "_id", "values": "cnt"}
+                "chart": {"type": "table"}
             },
-
-            "TS Treemap: readings count by resident and device (last 24h)": {
-                "collection": "bracelet_readings_ts",
+            "Telemetry: triggered video clips last 24h": {
+                "collection": "camera",
                 "aggregate": [
                     {"$match": {"ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}}},
-                    {"$group": {"_id": {"resident": "$meta.resident_id", "device": "$meta.device_id"}, "cnt": {"$count": {}}}},
-                    {"$project": {"resident": "$_id.resident", "device": "$_id.device", "cnt": 1, "_id": 0}}
+                    {"$project": {"_id": 0, "camera_id": 1, "room": 1, "ts": 1, "duration_sec": 1, "file_size_mb": 1}}
                 ],
-                "chart": {"type": "treemap", "path": ["resident", "device"], "values": "cnt"}
+                "chart": {"type": "table"}
+            },
+            "Telemetry: rule execution log last 7d": {
+                "collection": "rules_execution",
+                "aggregate": [
+                    {"$match": {"executed_at": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)}}},
+                    {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}}
+                ],
+                "chart": {"type": "pie", "names": "_id", "values": "count"}
             }
         }
     }
 }
-
 # The following block of code will create a simple Streamlit dashboard page
 st.set_page_config(page_title="Old-Age Home DB Dashboard", layout="wide")
 st.title("Old-Age Home | Mini Dashboard (Postgres + MongoDB)")
