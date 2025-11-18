@@ -11,7 +11,7 @@ from pymongo import MongoClient
 load_dotenv()
 
 #Postgres schema helper
-PG_SCHEMA = os.getenv("PG_SCHEMA", "smart_home")   # CHANGE: "public" to your own schema name
+PG_SCHEMA = os.getenv("PG_SCHEMA", "public")   # CHANGE: "public" to your own schema name
 def qualify(sql: str) -> str:
     # Replace occurrences of {S}.<table> with <schema>.<table>
     return sql.replace("{S}.", f"{PG_SCHEMA}.")
@@ -28,7 +28,7 @@ CONFIG = {
             #User 1: Administrator
             "Admin: list all users (table)": {
                 "sql": """
-                    SELECT user_id,     name, email, phone_number, role
+                    SELECT user_id,name, email, phone_number, role
                     FROM {S}.users
                     WHERE role = 'Admin';
                 """,
@@ -102,7 +102,7 @@ CONFIG = {
     "mongo": {
         "enabled": True,
         "uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),  # Will read from the .env file
-        "db_name": os.getenv("MONGO_DB", "eldercare"),               # Will read from the .env file
+        "db_name": os.getenv("MONGO_DB", "Smart_Home"),               # Will read from the .env file
         
         # CHANGE: Just like above, replace all the following Mongo queries with your own, for the different users you identified
         "queries": {
@@ -175,8 +175,8 @@ CONFIG = {
     }
 }
 # The following block of code will create a simple Streamlit dashboard page
-st.set_page_config(page_title="Old-Age Home DB Dashboard", layout="wide")
-st.title("Old-Age Home | Mini Dashboard (Postgres + MongoDB)")
+st.set_page_config(page_title="Smart_Home DB Dashboard", layout="wide")
+st.title("Smart_Home | Mini Dashboard (Postgres + MongoDB)")
 
 def metric_row(metrics: dict):
     cols = st.columns(len(metrics))
