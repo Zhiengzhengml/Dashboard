@@ -259,23 +259,13 @@ with st.sidebar:
 
     st.header("Role & Parameters")
     # CHANGE: Change the different roles, the specific attributes, parameters used, etc., to match your own Information System
-    role = st.selectbox("User role", ["doctor","nurse","pharmacist","guardian","manager","all"], index=5)
-    doctor_id = st.number_input("doctor_id", min_value=1, value=1, step=1)
-    nurse_id = st.number_input("nurse_id", min_value=1, value=2, step=1)
-    patient_name = st.text_input("patient_name", value="Alice")
-    age_threshold = st.number_input("age_threshold", min_value=0, value=85, step=1)
-    days = st.slider("last N days", 1, 90, 7)
-    med_low_threshold = st.number_input("med_low_threshold", min_value=0, value=5, step=1)
-    reorder_threshold = st.number_input("reorder_threshold", min_value=0, value=10, step=1)
-
+    role = st.selectbox("User role", ["Administrator","Family member","guest","all"], index=3)
+    user_id = st.number_input("user_id", min_value=1, value=1, step=1)
+    device_id = st.number_input("device_id", min_value=1, value=1, step=1)
+    
     PARAMS_CTX = {
-        "doctor_id": int(doctor_id),
-        "nurse_id": int(nurse_id),
-        "patient_name": patient_name,
-        "age_threshold": int(age_threshold),
-        "days": int(days),
-        "med_low_threshold": int(med_low_threshold),
-        "reorder_threshold": int(reorder_threshold),
+        "user_id": int(user_id),
+        "device_id": int(device_id),
     }
 
 #Postgres part of the dashboard
